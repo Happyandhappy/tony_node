@@ -25,22 +25,24 @@ var findSmartContractList = function(db, result){
         query, 
         { _id : 0, "from_acc_db": 1,"from_acc_cr" : 1, "to_acc_db":1, "to_acc_cr":1 },        
         function(err, smartResult){        
-            if (err) throw err;                                                                                     
-            var data = {
-                "TimeStamp"             : result.createdAt,
-                "Txid"                  : result.trx_id,
-                "Actid"                 : result.receipt.act_digest,
-                "from_username"         : result.act.data.from,
-                "from_account_debit"    : smartResult === null ? null: smartResult.from_acc_db,
-                "from_account_credit"   : smartResult === null ? null:smartResult.from_acc_cr,
-                "to_username"           : result.act.data.to,
-                "to_account_debit"      : smartResult === null ? null:smartResult.to_acc_db,
-                "to_account_credit"     : smartResult === null ? null:smartResult.to_acc_cr,
-                "amount"                : result.act.data.quantity === undefined ? null : result.act.data.quantity.split(' ')[0],
-                "currency"              : result.act.data.quantity === undefined ? null : result.act.data.quantity.split(' ')[1],
-                "valueinusd"            : result.act.data.quantity,            
-            };                
-            findEOSprices(db, data); 
+            if (err) throw err;      
+            if (smartResult != null){
+                var data = {
+                    "TimeStamp"             : result.createdAt,
+                    "Txid"                  : result.trx_id,
+                    "Actid"                 : result.receipt.act_digest,
+                    "from_username"         : result.act.data.from,
+                    "from_account_debit"    : smartResult === null ? null: smartResult.from_acc_db,
+                    "from_account_credit"   : smartResult === null ? null:smartResult.from_acc_cr,
+                    "to_username"           : result.act.data.to,
+                    "to_account_debit"      : smartResult === null ? null:smartResult.to_acc_db,
+                    "to_account_credit"     : smartResult === null ? null:smartResult.to_acc_cr,
+                    "amount"                : result.act.data.quantity === undefined ? null : result.act.data.quantity.split(' ')[0],
+                    "currency"              : result.act.data.quantity === undefined ? null : result.act.data.quantity.split(' ')[1],
+                    "valueinusd"            : result.act.data.quantity,            
+                };                
+                findEOSprices(db, data); 
+            }
     }); 
 }
 
@@ -55,16 +57,19 @@ var findEOSprices = function(db, data){
             {"date": date},
             function(err, result){            
                 if (err) throw err;
-                data.valueinusd = result['price(USD)'];
-                db.collection("testing_Global_ledger_00").insertOne(data, function(err,res){
-                    if (err) throw err;                   
-                    if (cnt == 100000) {
-                        console.log('---------------------------------------------------------------------');
-                        console.log(new Date().getMilliseconds() - start);
-                    } else{
-                        console.log(cnt++);
-                    }
-                });
+                if (result != null){
+                    var amount = Number.isNaN(parseFloat(data.amount) * parseFloat(result['price(USD)'])) ? 0 : parseFloat(data.amount) * parseFloat(result['price(USD)']);
+                    data.valueinusd = amount;
+                    db.collection("testing_esof_ledger").insertOne(data, function(err,res){
+                        if (err) throw err;                   
+                        if (cnt == 100) {
+                            console.log('---------------------------------------------------------------------');
+                            console.log(new Date().getMilliseconds() - start);
+                        } else{
+                            console.log(cnt++);
+                        }
+                    });
+                }
             }
     ); 
 }
