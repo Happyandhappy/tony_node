@@ -1,6 +1,7 @@
 var MongoClient = require('mongodb').MongoClient;
 var url = "mongodb://admin:LanaRhoades456@172.104.83.46:27017/eosdb";
 let cnt = 0;
+let eso_ledger_name = "global_eso_ledger";
 
 // check if current record is existing in collection
 /*var isNanInCollection = async function(db, collection_name, query){    
@@ -20,9 +21,15 @@ var getCoinId  = async function(db, symbol){
         "Coin_short" : symbol
     };
 
-    let coinRecord = await db.collection("coin_list").findOne(query, {});
+    let coinRecord;
+    try{
+        coinRecord = await db.collection("coin_list").findOne(query, {});    
+    }catch(err){
+        throw err;
+    }
+    
     let id = null;    
-    if (coinRecord === null){            
+    if (coinRecord === null){
         id = await db.collection("coin_list").countDocuments() + 1;
         await db.collection("coin_list").insertOne({
             "Coin_id"       : id,
@@ -37,59 +44,59 @@ var getCoinId  = async function(db, symbol){
 }
 
 var findActionTraces =async function(db, offset){
-    console.log("--------------------offset ------------------------");          
+    console.log("--------------------offset ------------------------");
     start = new Date().getTime();
     let cursor = db.collection("action_traces").find(
         {},
         {_id:0, "trx_id" : 1, "createdAt":1, "receipt":1, "act":1}
     )
     .skip(offset)
-    .limit(1000000)
-    .batchSize(100000);
+    .limit(100000)
+    .batchSize(10000);
     console.log(start);
-    for (let doc = await cursor.next(); doc != null; doc = await cursor.next()) {        
+    for (let doc = await cursor.next(); doc != null; doc = await cursor.next()) {
         if (typeof doc.act.data === "object"){
             if (doc.act.data.quantity != undefined || parseFloat(doc.act.data.quantity) > 0){
                 if (doc.act.data.memo === undefined) doc.act.data.memo = null;
 
-                    let coinId = await getCoinId(db, doc.act.data.quantity.split(' ')[1]);
-                    let coinCollection;
-                    if (coinId === 1){
-                        coinCollection = "eos_price_db";
-                    }else{
-                        coinCollection = "";
-                    }
+                let coinId = await getCoinId(db, doc.act.data.quantity.split(' ')[1]);
+                let coinCollection;
+                if (coinId === 1){
+                    coinCollection = "eos_price_db";
+                }else{
+                    coinCollection = "";
+                }
 
-                    var date =new Date(doc.createdAt);
-                    date = new Date(date.getFullYear(), date.getMonth(), date.getDate(),2,0,0,0);                    
-                    try{
-                        priceRecord = await db.collection(coinCollection).findOne({"date": date});
-                    }catch(err){
-                        throw err;
-                    } 
-                                        
-                    if (priceRecord != null){                        
-                        var unit = parseFloat(priceRecord['price(USD)']);
-                        data = {
-                            "Txid"              : doc.trx_id,
-                            "TimeStamp"         : doc.createdAt, 
-                            "Actid"             : doc.receipt.act_digest,
-                            "Sc_account"        : doc.act.account === undefined ? null : doc.act.account ,
-                            "Sc_name"           : doc.act.name === undefined ? null : doc.act.name,
-                            "Sc_memo"           : doc.act.data.memo === undefined ? null : doc.act.data.memo,
-                            "From_username"     : doc.act.data.from,
-                            "To_username"       : doc.act.data.to,
-                            "Amount"            : doc.act.data.quantity.split(' ')[0],
-                            "Currency"          : coinId,
-                            "ValueinUsd"        : parseFloat(doc.act.data.quantity) * unit
-                        };
-                        await db.collection("testing_esof_ledger").insertOne(data);  
-                        // console.log("Insert One");
-                        console.log(cnt++);
-                    }
-            }
+                var date =new Date(doc.createdAt);
+                date = new Date(date.getFullYear(), date.getMonth(), date.getDate(),2,0,0,0);
+                try{
+                    priceRecord = await db.collection(coinCollection).findOne({"date": date});
+                }catch(err){
+                    throw err;
+                } 
+
+                if (priceRecord != null){
+                    var unit = parseFloat(priceRecord['price(USD)']);
+                    data = {
+                        "Txid"              : doc.trx_id,
+                        "TimeStamp"         : doc.createdAt, 
+                        "Actid"             : doc.receipt.act_digest,
+                        "Sc_account"        : doc.act.account === undefined ? null : doc.act.account ,
+                        "Sc_name"           : doc.act.name === undefined ? null : doc.act.name,
+                        "Sc_memo"           : doc.act.data.memo === undefined ? null : doc.act.data.memo,
+                        "From_username"     : doc.act.data.from,
+                        "To_username"       : doc.act.data.to,
+                        "Amount"            : doc.act.data.quantity.split(' ')[0],
+                        "Currency"          : coinId,
+                        "Homecurrency"      : parseFloat(doc.act.data.quantity) * unit
+                    };
+                    await db.collection(eso_ledger_name).insertOne(data);
+                    console.log(cnt++);
+                }
+            }            
         }
     }
+    findActionTraces(db,offset + 100000);
 }
 
 // MongoClient.connect( url , { useNewUrlParser: true },  function(err, client){
@@ -179,4 +186,3 @@ MongoClient.connect( url , { useNewUrlParser: true },  function(err, client){
     // findActionTraces2(client.db("eosdb"));
     findActionTraces(client.db("eosdb"),0);
 });
-
