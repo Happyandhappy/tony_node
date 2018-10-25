@@ -4,17 +4,10 @@ let cnt = 0;
 let eso_ledger_name = "global_eso_ledger";
 
 // check if current record is existing in collection
-/*var isNanInCollection = async function(db, collection_name, query){    
-    var cursor = null;
-    try{
-        cursor = await db.collection(collection_name).find(query).batchSize(10000);
-    }catch(err){
-        throw err;
-    }
-    if ( cursor != null && await cursor.next() === null){
-        return true;
-    }else return false;
-}*/
+var isNanInCollection = async function(db, collection_name, query){    
+    var record =await db.collection(collection_name).findOne(query);
+    return record === null;
+}
 
 var getCoinId  = async function(db, symbol){
     var query = {
@@ -51,52 +44,65 @@ var findActionTraces =async function(db, offset){
         {_id:0, "trx_id" : 1, "createdAt":1, "receipt":1, "act":1}
     )
     .skip(offset)
-    .limit(100000)
-    .batchSize(10000);
+    .limit(1000000)
+    .batchSize(100000);
     console.log(start);
     for (let doc = await cursor.next(); doc != null; doc = await cursor.next()) {
         if (typeof doc.act.data === "object"){
             if (doc.act.data.quantity != undefined || parseFloat(doc.act.data.quantity) > 0){
                 if (doc.act.data.memo === undefined) doc.act.data.memo = null;
+                let query = {
+                    "Txid"              : doc.trx_id,
+                    "TimeStamp"         : doc.createdAt, 
+                    "Actid"             : doc.receipt.act_digest,
+                    "Sc_account"        : doc.act.account === undefined ? null : doc.act.account ,
+                    "Sc_name"           : doc.act.name === undefined ? null : doc.act.name,
+                    "Sc_memo"           : doc.act.data.memo === undefined ? null : doc.act.data.memo,
+                    "From_username"     : doc.act.data.from,
+                    "To_username"       : doc.act.data.to,
+                    "Amount"            : doc.act.data.quantity.split(' ')[0],
+                };
+                                
+                // if (await isNanInCollection(db, eso_ledger_name, query) === true){
+                    let coinId = await getCoinId(db, doc.act.data.quantity.split(' ')[1]);
+                    let coinCollection;
+                    if (coinId === 1){
+                        coinCollection = "price_eos";
+                    }else{
+                        coinCollection = "";
+                    }
 
-                let coinId = await getCoinId(db, doc.act.data.quantity.split(' ')[1]);
-                let coinCollection;
-                if (coinId === 1){
-                    coinCollection = "eos_price_db";
-                }else{
-                    coinCollection = "";
-                }
+                    var date =new Date(doc.createdAt);
+                    date = new Date(date.getFullYear(), date.getMonth(), date.getDate(),2,0,0,0);
+                    try{
+                        priceRecord = await db.collection(coinCollection).findOne({"date": date});
+                    }catch(err){
+                        throw err;
+                    } 
 
-                var date =new Date(doc.createdAt);
-                date = new Date(date.getFullYear(), date.getMonth(), date.getDate(),2,0,0,0);
-                try{
-                    priceRecord = await db.collection(coinCollection).findOne({"date": date});
-                }catch(err){
-                    throw err;
-                } 
-
-                if (priceRecord != null){
-                    var unit = parseFloat(priceRecord['price(USD)']);
-                    data = {
-                        "Txid"              : doc.trx_id,
-                        "TimeStamp"         : doc.createdAt, 
-                        "Actid"             : doc.receipt.act_digest,
-                        "Sc_account"        : doc.act.account === undefined ? null : doc.act.account ,
-                        "Sc_name"           : doc.act.name === undefined ? null : doc.act.name,
-                        "Sc_memo"           : doc.act.data.memo === undefined ? null : doc.act.data.memo,
-                        "From_username"     : doc.act.data.from,
-                        "To_username"       : doc.act.data.to,
-                        "Amount"            : doc.act.data.quantity.split(' ')[0],
-                        "Currency"          : coinId,
-                        "Homecurrency"      : parseFloat(doc.act.data.quantity) * unit
-                    };
-                    await db.collection(eso_ledger_name).insertOne(data);
-                    console.log(cnt++);
-                }
+                    if (priceRecord != null){
+                        var unit = parseFloat(priceRecord['price(USD)']);
+                        data = {
+                            "Txid"              : doc.trx_id,
+                            "TimeStamp"         : doc.createdAt, 
+                            "Actid"             : doc.receipt.act_digest,
+                            "Sc_account"        : doc.act.account === undefined ? null : doc.act.account ,
+                            "Sc_name"           : doc.act.name === undefined ? null : doc.act.name,
+                            "Sc_memo"           : doc.act.data.memo === undefined ? null : doc.act.data.memo,
+                            "From_username"     : doc.act.data.from,
+                            "To_username"       : doc.act.data.to,
+                            "Amount"            : doc.act.data.quantity.split(' ')[0],
+                            "Currency"          : coinId,
+                            "Homecurrency"      : parseFloat(doc.act.data.quantity) * unit
+                        };
+                        await db.collection(eso_ledger_name).insertOne(data);
+                        console.log(cnt++);
+                    }
+                // } 
             }            
         }
     }
-    findActionTraces(db,offset + 100000);
+    findActionTraces(db,offset + 1000000);
 }
 
 // MongoClient.connect( url , { useNewUrlParser: true },  function(err, client){
